@@ -2,13 +2,14 @@ import arcade
 import random
 from Player import Hero
 
-
 SCREEN_WIDTH, SCREEN_HEIGHT = arcade.window_commands.get_display_size()
 CAMERA_LERP = 0.13
+
+
 class GridGame(arcade.Window):
     def __init__(self, width, height):
         super().__init__(width, height, "Amnesia-like", fullscreen=True)
-        self.world_camera = arcade.camera.Camera2D() # Камера для игрового мира
+        self.world_camera = arcade.camera.Camera2D()  # Камера для игрового мира
         self.gui_camera = arcade.camera.Camera2D()  # Камера для объектов интерфейса
 
         # Причина тряски — специальный объект ScreenShake2D
@@ -25,6 +26,7 @@ class GridGame(arcade.Window):
         self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 3)
         self.player_list.append(self.player)
         self.wall_list = arcade.SpriteList()
+        # если есть проблема с путём то нужно идти в файл с расширением .tsx
         map_name = "./floors/first_level.tmx"
         tile_map = arcade.load_tilemap(map_name, scaling=2)
         self.wall_list = tile_map.sprite_lists["floor"]
@@ -56,7 +58,6 @@ class GridGame(arcade.Window):
             position,
             CAMERA_LERP,  # Плавность следования камеры
         )
-
 
 
 def main():
