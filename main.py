@@ -1,9 +1,12 @@
 import arcade
 import random
 from Player import Hero
+from monster import killer
 
 SCREEN_WIDTH, SCREEN_HEIGHT = arcade.window_commands.get_display_size()
 CAMERA_LERP = 0.13
+PLAYER_SPEED = 100
+MONSTER_SPEED = 200
 
 
 class GridGame(arcade.Window):
@@ -11,6 +14,7 @@ class GridGame(arcade.Window):
         super().__init__(width, height, "Amnesia-like", fullscreen=True)
         self.world_camera = arcade.camera.Camera2D()  # Камера для игрового мира
         self.gui_camera = arcade.camera.Camera2D()  # Камера для объектов интерфейса
+        self.keys_pressed = set()
 
         # Причина тряски — специальный объект ScreenShake2D
         self.camera_shake = arcade.camera.grips.ScreenShake2D(
@@ -23,7 +27,10 @@ class GridGame(arcade.Window):
 
     def setup(self):
         self.player_list = arcade.SpriteList()
-        self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 3)
+        self.monster_list = arcade.SpriteList()
+        self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 2)
+        self.monster = killer(SCREEN_WIDTH, SCREEN_HEIGHT, 5)
+        self.monster_list.append(self.monster)
         self.player_list.append(self.player)
         self.wall_list = arcade.SpriteList()
         # если есть проблема с путём то нужно идти в файл с расширением .tsx
@@ -43,6 +50,7 @@ class GridGame(arcade.Window):
         self.wall_list.draw()
         self.collision_list.draw()
         self.player_list.draw()
+        self.monster_list.draw()
         self.camera_shake.readjust_camera()
 
     def on_update(self, dt: float):
@@ -58,6 +66,39 @@ class GridGame(arcade.Window):
             position,
             CAMERA_LERP,  # Плавность следования камеры
         )
+        # ускорение
+        if arcade.key.LSHIFT in self.keys_pressed:
+            PLAYER_SPEED = 250
+        else:
+            PLAYER_SPEED = 100
+
+        # управление игроком
+        if arcade.key.LEFT in self.keys_pressed:
+            self.player.center_x -= PLAYER_SPEED * dt
+        if arcade.key.RIGHT in self.keys_pressed:
+            self.player.center_x += PLAYER_SPEED * dt
+        if arcade.key.UP in self.keys_pressed:
+            self.player.center_y += PLAYER_SPEED * dt
+        if arcade.key.DOWN in self.keys_pressed:
+            self.player.center_y -= PLAYER_SPEED * dt
+
+        # Вычисляем вектор направления к игроку
+        self.monster.update(dt)
+        dx = self.player.center_x - self.monster.center_x
+        dy = self.player.center_y - self.monster.center_y
+        distance = (dx ** 2 + dy ** 2) ** 0.5
+        if 500 > distance > 0:
+            dx = dx / distance * MONSTER_SPEED * dt
+            dy = dy / distance * MONSTER_SPEED * dt
+            self.monster.center_x += dx
+            self.monster.center_y += dy
+
+    def on_key_press(self, key, modifiers):
+        self.keys_pressed.add(key)
+
+    def on_key_release(self, key, modifiers):
+        if key in self.keys_pressed:
+            self.keys_pressed.remove(key)
 
 
 def main():
