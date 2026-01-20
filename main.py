@@ -10,6 +10,7 @@ SCREEN_WIDTH, SCREEN_HEIGHT = arcade.window_commands.get_display_size()
 CAMERA_LERP = 0.13
 PLAYER_SPEED = 100
 MONSTER_SPEED = 130
+MONSTER_DISTANCE_START_RUN = 800
 
 
 class GridGame(arcade.Window):
@@ -19,6 +20,8 @@ class GridGame(arcade.Window):
         self.gui_camera = arcade.camera.Camera2D()
         self.light_layer = None
         self.player_light = None
+        self.player_sprites_change_now = False
+        self.player_sprites_change_timer = 0
         # Камера для объектов интерфейса
         self.keys_pressed = set()
 
@@ -44,7 +47,7 @@ class GridGame(arcade.Window):
             self.player.center_x,
             self.player.center_y,
             200,
-            (252, 236, 172), "soft"
+            (255, 240, 200), "soft"
         )
         self.light_layer.add(self.player_light)
         self.wall_list = arcade.SpriteList()
@@ -84,26 +87,38 @@ class GridGame(arcade.Window):
         )
         # ускорение
         if arcade.key.LSHIFT in self.keys_pressed:
-            PLAYER_SPEED = 250
+            PLAYER_SPEED = 200
         else:
             PLAYER_SPEED = 100
 
         # управление игроком
+        self.player_sprites_change_now = False
         if arcade.key.LEFT in self.keys_pressed:
             self.player.center_x -= PLAYER_SPEED * dt
+            self.player_sprites_change_now = True
         if arcade.key.RIGHT in self.keys_pressed:
             self.player.center_x += PLAYER_SPEED * dt
+            self.player_sprites_change_now = True
         if arcade.key.UP in self.keys_pressed:
             self.player.center_y += PLAYER_SPEED * dt
+            self.player_sprites_change_now = True
         if arcade.key.DOWN in self.keys_pressed:
             self.player.center_y -= PLAYER_SPEED * dt
-
+            self.player_sprites_change_now = True
+        if len(self.keys_pressed) != 0:
+            self.player.stop = False
+        if self.player_sprites_change_now:
+            self.player_sprites_change_timer += dt
+            if self.player_sprites_change_timer >= 0.2:
+                self.player_sprites_change_timer = 0
+                self.player.now_sprite_num = (self.player.now_sprite_num + 1) % 2
+        self.player.update(dt)
         # Вычисляем вектор направления к игроку
         self.monster.update(dt)
         dx = self.player.center_x - self.monster.center_x
         dy = self.player.center_y - self.monster.center_y
         distance = (dx ** 2 + dy ** 2) ** 0.5
-        if 500 > distance > 0:
+        if MONSTER_DISTANCE_START_RUN > distance > 0:
             dx = dx / distance * MONSTER_SPEED * dt
             dy = dy / distance * MONSTER_SPEED * dt
             self.monster.center_x += dx
@@ -111,6 +126,14 @@ class GridGame(arcade.Window):
         self.player_light.position = self.player.position
 
     def on_key_press(self, key, modifiers):
+        if key == arcade.key.DOWN:
+            self.player.now_direction_num = 0
+        if key == arcade.key.UP:
+            self.player.now_direction_num = 1
+        if key == arcade.key.RIGHT:
+            self.player.now_direction_num = 2
+        if key == arcade.key.LEFT:
+            self.player.now_direction_num = 3
         self.keys_pressed.add(key)
 
     def on_key_release(self, key, modifiers):
