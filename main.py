@@ -24,6 +24,8 @@ class GridGame(arcade.Window):
         self.player_sprites_change_timer = 0
         # Камера для объектов интерфейса
         self.keys_pressed = set()
+        self.selected_item = 0
+        self.game_state = "MENU"  # MENU, PLAYING, PAUSED
 
         # Причина тряски — специальный объект ScreenShake2D
         self.camera_shake = arcade.camera.grips.ScreenShake2D(
@@ -60,8 +62,30 @@ class GridGame(arcade.Window):
             self.player, self.collision_list
         )
 
-    def on_draw(self):
-        self.clear()
+    def draw_menu(self):
+        """Отрисовка меню"""
+        arcade.set_background_color(arcade.color.BLACK)
+        arcade.draw_text("AMNESIA-LIKE",
+                         SCREEN_WIDTH // 2,
+                         SCREEN_HEIGHT * 0.7,
+                         arcade.color.WHITE,
+                         60,
+                         anchor_x="center",
+                         bold=True)
+
+        menu_items = ["Начать игру", "Настройки", "Выход"]
+
+        for i, item in enumerate(menu_items):
+            color = arcade.color.YELLOW if i == self.selected_item else arcade.color.WHITE
+            arcade.draw_text(item,
+                             SCREEN_WIDTH // 2,
+                             SCREEN_HEIGHT * 0.5 - i * 60,
+                             color,
+                             30,
+                             anchor_x="center")
+
+    def draw_pause_screen(self):
+        """Отрисовка экрана паузы поверх игры"""
         self.camera_shake.update_camera()
         self.world_camera.use()
         with self.light_layer:
@@ -72,7 +96,56 @@ class GridGame(arcade.Window):
         self.camera_shake.readjust_camera()
         self.light_layer.draw(ambient_color=AMBIENT_COLOR)
 
+        arcade.draw_lbwh_rectangle_filled(self.player.center_x,
+                                          self.player.center_y,
+                                          200,
+                                          200,
+                                          (0, 0, 0, 180))
+
+        arcade.draw_text("ПАУЗА",
+                         self.player.center_x,
+                         self.player.center_y,
+                         arcade.color.WHITE,
+                         60,
+                         anchor_x="center",
+                         bold=True)
+
+        pause_items = ["Продолжить", "В главное меню"]
+
+        for i, item in enumerate(pause_items):
+            if i == self.selected_item:
+                color = arcade.color.YELLOW
+            else:
+                color = arcade.color.WHITE
+            arcade.draw_text(item,
+                             self.player.center_x,
+                             self.player.center_y - 50 - i * 100,
+                             color,
+                             30,
+                             anchor_x="center")
+
+    def on_draw(self):
+        self.clear()
+        if self.game_state == "PLAYING":
+            self.camera_shake.update_camera()
+            self.world_camera.use()
+            with self.light_layer:
+                self.wall_list.draw()
+                self.collision_list.draw()
+                self.player_list.draw()
+                self.monster_list.draw()
+            self.camera_shake.readjust_camera()
+            self.light_layer.draw(ambient_color=AMBIENT_COLOR)
+
+        elif self.game_state == "MENU":
+            self.draw_menu()
+
+        elif self.game_state == "PAUSED":
+            self.draw_pause_screen()
+
     def on_update(self, dt: float):
+        if self.game_state != "PLAYING":
+            return
         self.physics_engine.update()
         self.camera_shake.update(dt)  # Обновляем тряску камеры
 
@@ -114,7 +187,6 @@ class GridGame(arcade.Window):
                 self.player.now_sprite_num = (self.player.now_sprite_num + 1) % 2
         self.player.update(dt)
         # Вычисляем вектор направления к игроку
-        self.monster.update(dt)
         dx = self.player.center_x - self.monster.center_x
         dy = self.player.center_y - self.monster.center_y
         distance = (dx ** 2 + dy ** 2) ** 0.5
@@ -126,15 +198,52 @@ class GridGame(arcade.Window):
         self.player_light.position = self.player.position
 
     def on_key_press(self, key, modifiers):
-        if key == arcade.key.DOWN:
-            self.player.now_direction_num = 0
-        if key == arcade.key.UP:
-            self.player.now_direction_num = 1
-        if key == arcade.key.RIGHT:
-            self.player.now_direction_num = 2
-        if key == arcade.key.LEFT:
-            self.player.now_direction_num = 3
-        self.keys_pressed.add(key)
+        if self.game_state == "MENU":
+            if key == arcade.key.UP:
+                self.selected_item = (self.selected_item - 1) % 3
+            elif key == arcade.key.DOWN:
+                self.selected_item = (self.selected_item + 1) % 3
+            elif key == arcade.key.ENTER:
+                if self.selected_item == 0:
+                    self.setup()
+                    self.game_state = "PLAYING"
+                elif self.selected_item == 2:
+                    arcade.close_window()
+
+        elif self.game_state == "PLAYING":
+            if key == arcade.key.ESCAPE or key == arcade.key.P:
+                self.game_state = "PAUSED"
+                self.selected_item = 0
+                return
+
+            if key == arcade.key.DOWN:
+                self.player.now_direction_num = 0
+            if key == arcade.key.UP:
+                self.player.now_direction_num = 1
+            if key == arcade.key.RIGHT:
+                self.player.now_direction_num = 2
+            if key == arcade.key.LEFT:
+                self.player.now_direction_num = 3
+
+            self.keys_pressed.add(key)
+
+        elif self.game_state == "PAUSED":
+            if key == arcade.key.ESCAPE or key == arcade.key.P:
+                self.game_state = "PLAYING"
+            elif key == arcade.key.UP:
+                self.selected_item = (self.selected_item - 1) % 2
+            elif key == arcade.key.DOWN:
+                self.selected_item = (self.selected_item + 1) % 2
+            elif key == arcade.key.ENTER:
+                if self.selected_item == 0:
+                    self.game_state = "PLAYING"
+                elif self.selected_item == 1:
+                    self.game_state = "MENU"
+                    self.selected_item = 0
+                    # Сброс движка
+                    self.player = None
+                    self.monster = None
+                    self.physics_engine = None
 
     def on_key_release(self, key, modifiers):
         if key in self.keys_pressed:
@@ -143,7 +252,7 @@ class GridGame(arcade.Window):
 
 def main():
     game = GridGame(SCREEN_WIDTH, SCREEN_HEIGHT)
-    game.setup()
+    game.game_state = "MENU"
     arcade.run()
 
 

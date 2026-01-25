@@ -19,7 +19,7 @@ class Hero(arcade.Sprite):
         self.stop = True
         self.delta_x = 0
         self.delta_y = 0
-        self.scale = scale * 2
+        self.scale = scale
 
     def update(self, delta_time):
         self.texture = self.all_textures[self.now_direction_num][self.now_sprite_num]
