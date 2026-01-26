@@ -1,7 +1,11 @@
-class Items:
-    def __init__(self, time, buffs, debuffs, x, y):
-        self.time = time
-        self.buffs = buffs
-        self.debuffs = debuffs
-        self.x = x
-        self.y = y
+import arcade
+
+
+class Items(arcade.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.center_x = x
+        self.center_y = y
+        self.scale = 3
+        self.idle_texture = arcade.load_texture("./sprites_all/oil_bak.png")
+        self.texture = self.idle_texture
