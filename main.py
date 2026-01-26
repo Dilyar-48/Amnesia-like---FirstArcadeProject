@@ -6,6 +6,8 @@ import random
 from Player import Hero
 from monster import killer
 from Items import Items
+from Generator import Generator
+from pyglet.graphics import Batch
 
 SCREEN_WIDTH, SCREEN_HEIGHT = arcade.window_commands.get_display_size()
 CAMERA_LERP = 0.13
@@ -22,6 +24,11 @@ class GridGame(arcade.Window):
         self.gui_camera = arcade.camera.Camera2D()
         self.light_layer = None
         self.count_oil = 10
+        self.batch = Batch()
+        self.sound_oil_gen = arcade.load_sound("all_sounds/to_oil_sound.mp3")
+        self.sound_inventory = arcade.load_sound("all_sounds/to_inventory.mp3")
+        self.sound_forest = arcade.load_sound("all_sounds/snowy.mp3")
+        arcade.play_sound(self.sound_forest, volume=0.35, loop=True)
         self.player_light = None
         self.keys_all = [arcade.key.DOWN, arcade.key.UP, arcade.key.RIGHT, arcade.key.LEFT]
         self.player_sprites_change_now = False
@@ -45,6 +52,10 @@ class GridGame(arcade.Window):
         self.light_layer.set_background_color(arcade.color.BLACK)
         self.player_list = arcade.SpriteList()
         self.monster_list = arcade.SpriteList()
+        self.generator_list = arcade.SpriteList()
+        self.generat = Generator(self.tile_map.width * self.tile_map.tile_width,
+                                 (self.tile_map.height - 1) * self.tile_map.tile_height * self.tile_map.scaling, self.count_oil)
+        self.generator_list.append(self.generat)
         self.now_oil = 0
         self.oil_list = arcade.SpriteList()
         self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 2)
@@ -77,10 +88,14 @@ class GridGame(arcade.Window):
     def on_draw(self):
         self.clear()
         self.camera_shake.update_camera()
+        self.gui_camera.use()
+        text = arcade.Text(f"adsfd", 0, 0, arcade.color.WHITE, 50, font_name="Calibri", batch=self.batch)
+        self.batch.draw()
         self.world_camera.use()
         with self.light_layer:
             self.wall_list.draw()
             self.collision_list.draw()
+            self.generator_list.draw()
             self.oil_list.draw()
             self.player_list.draw()
             self.monster_list.draw()
@@ -166,8 +181,12 @@ class GridGame(arcade.Window):
             if len(volission_with_oil) > 0 and self.now_oil == 0:
                 self.now_oil = 1
                 volission_with_oil[0].remove_from_sprite_lists()
-        if self.now_oil == 0:
-            pass
+                arcade.play_sound(self.sound_inventory)
+        if self.now_oil == 1 and arcade.check_for_collision(self.player, self.generat) and key == arcade.key.E:
+            self.now_oil = 0
+            self.generat.now_oil += 1
+            arcade.play_sound(self.sound_oil_gen)
+
         if key != arcade.key.E:
             self.keys_pressed.add(key)
 
