@@ -65,24 +65,28 @@ class GridGame(arcade.Window):
     def draw_menu(self):
         """Отрисовка меню"""
         arcade.set_background_color(arcade.color.BLACK)
+        self.gui_camera.use()
         arcade.draw_text("AMNESIA-LIKE",
-                         SCREEN_WIDTH // 2,
-                         SCREEN_HEIGHT * 0.7,
-                         arcade.color.WHITE,
-                         60,
-                         anchor_x="center",
-                         bold=True)
-
+                        SCREEN_WIDTH // 2,
+                        SCREEN_HEIGHT * 0.7,
+                        arcade.color.WHITE,
+                        60,
+                        anchor_x="center",
+                        anchor_y="center",
+                        bold=True
+                    )
         menu_items = ["Начать игру", "Настройки", "Выход"]
 
         for i, item in enumerate(menu_items):
             color = arcade.color.YELLOW if i == self.selected_item else arcade.color.WHITE
             arcade.draw_text(item,
-                             SCREEN_WIDTH // 2,
-                             SCREEN_HEIGHT * 0.5 - i * 60,
-                             color,
-                             30,
-                             anchor_x="center")
+                            SCREEN_WIDTH // 2,
+                            SCREEN_HEIGHT * 0.5 - i * 60,
+                            color,
+                            30,
+                            anchor_x="center",
+                            anchor_y="center"
+                        )
 
     def draw_pause_screen(self):
         """Отрисовка экрана паузы поверх игры"""
@@ -95,12 +99,6 @@ class GridGame(arcade.Window):
             self.monster_list.draw()
         self.camera_shake.readjust_camera()
         self.light_layer.draw(ambient_color=AMBIENT_COLOR)
-
-        arcade.draw_lbwh_rectangle_filled(self.player.center_x,
-                                          self.player.center_y,
-                                          200,
-                                          200,
-                                          (0, 0, 0, 180))
 
         arcade.draw_text("ПАУЗА",
                          self.player.center_x,
