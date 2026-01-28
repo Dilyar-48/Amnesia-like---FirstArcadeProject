@@ -1,5 +1,4 @@
 import arcade
-from Player import Hero
 
 class killer(arcade.Sprite):
     def __init__(self, width, height, scale):
@@ -11,3 +10,4 @@ class killer(arcade.Sprite):
         self.scale = scale
         self.delta_x = 0
         self.delta_y = 0
+
