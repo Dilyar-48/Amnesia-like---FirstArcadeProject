@@ -5,6 +5,9 @@ from arcade.future.light import Light, LightLayer
 import random
 from Player import Hero
 from monster import killer
+from Items import Items
+from Generator import Generator
+from pyglet.graphics import Batch
 
 SCREEN_WIDTH, SCREEN_HEIGHT = arcade.window_commands.get_display_size()
 CAMERA_LERP = 0.13
@@ -13,56 +16,107 @@ MONSTER_SPEED = 130
 MONSTER_DISTANCE_START_RUN = 800
 MOVING_SPRITES_SPEED = 0.2
 
+
 class GridGame(arcade.Window):
     def __init__(self, width, height):
         super().__init__(width, height, "Amnesia-like", fullscreen=True)
         self.world_camera = arcade.camera.Camera2D()  # Камера для игрового мира
         self.gui_camera = arcade.camera.Camera2D()
         self.light_layer = None
+        self.count_oil = 10
+        self.batch = Batch()
+        self.sound_oil_gen = arcade.load_sound("all_sounds/to_oil_sound.mp3")
+        self.sound_inventory = arcade.load_sound("all_sounds/to_inventory.mp3")
+        self.sound_forest = arcade.load_sound("all_sounds/snowy.mp3")
+        arcade.play_sound(self.sound_forest, volume=0.35, loop=True)
         self.player_light = None
         self.keys_all = [arcade.key.DOWN, arcade.key.UP, arcade.key.RIGHT, arcade.key.LEFT]
         self.player_sprites_change_now = False
         self.player_sprites_change_timer = 0
         # Камера для объектов интерфейса
         self.keys_pressed = set()
+        self.selected_item = 0
+        self.game_state = "MENU"
 
         # Причина тряски — специальный объект ScreenShake2D
         self.camera_shake = arcade.camera.grips.ScreenShake2D(
             self.world_camera.view_data,  # Трястись будет только то, что попадает в объектив мировой камеры
-            max_amplitude=15,  # Параметры, с которыми можно поиграть
-            acceleration_duration=1,
-            falloff_time=0.1,
-            shake_frequency=100,
+            max_amplitude=15.0,  # Параметры, с которыми можно поиграть
+            acceleration_duration=0.1,
+            falloff_time=0.5,
+            shake_frequency=10.0,
         )
 
     def setup(self):
+        map_name = "./floors/first_level.tmx"
+        self.tile_map = arcade.load_tilemap(map_name, scaling=2)
         self.light_layer = LightLayer(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.light_layer.set_background_color(arcade.color.BLACK)
         self.player_list = arcade.SpriteList()
         self.monster_list = arcade.SpriteList()
         self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 2)
+        self.monster = killer(SCREEN_WIDTH, SCREEN_HEIGHT, 5)
+        self.monster_list.append(self.monster)
+        self.monster_list = arcade.SpriteList()
+        self.generator_list = arcade.SpriteList()
+        self.generat = Generator(self.tile_map.width * self.tile_map.tile_width,
+                                 (self.tile_map.height - 1) * self.tile_map.tile_height * self.tile_map.scaling, self.count_oil)
+        self.generator_list.append(self.generat)
+        self.now_oil = 0
+        self.oil_list = arcade.SpriteList()
+        self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 2)
         self.monster = killer(SCREEN_WIDTH, SCREEN_HEIGHT, 5, 10, 10)
         self.monster_list.append(self.monster)
         self.player_list.append(self.player)
+        for oil in range(self.count_oil):
+            random_x = random.randrange(self.tile_map.tile_width,
+                                        (self.tile_map.width - 1) * self.tile_map.tile_width * self.tile_map.scaling)
+            random_y = random.randrange(self.tile_map.tile_height,
+                                        (self.tile_map.height - 1) * self.tile_map.tile_height * self.tile_map.scaling)
+            item_oil = Items(random_x,
+                             random_y)
+            self.oil_list.append(item_oil)
         self.player_light = Light(
             self.player.center_x,
             self.player.center_y,
-            200,
+            250,
             (255, 240, 200), "soft"
         )
         self.light_layer.add(self.player_light)
         self.wall_list = arcade.SpriteList()
         map_name = "./floors/first_level.tmx"
-        self.tile_map = arcade.load_tilemap(map_name, scaling=2)
-        self.wall_list = self.tile_map.sprite_lists["floor"]
-        self.collision_list = self.tile_map.sprite_lists["walls"]
+        tile_map = arcade.load_tilemap(map_name, scaling=2)
+        self.wall_list = tile_map.sprite_lists["floor"]
+        self.collision_list = tile_map.sprite_lists["walls"]
 
         self.physics_engine = arcade.PhysicsEngineSimple(
-            self.player, self.collision_list
+            self.player, (self.collision_list, self.oil_list)
         )
 
-    def on_draw(self):
-        self.clear()
+    def draw_menu(self):
+        """Отрисовка меню"""
+        arcade.set_background_color(arcade.color.BLACK)
+        arcade.draw_text("AMNESIA-LIKE",
+                         SCREEN_WIDTH // 2,
+                         SCREEN_HEIGHT * 0.7,
+                         arcade.color.WHITE,
+                         60,
+                         anchor_x="center",
+                         bold=True)
+
+        menu_items = ["Начать игру", "Настройки", "Выход"]
+
+        for i, item in enumerate(menu_items):
+            color = arcade.color.YELLOW if i == self.selected_item else arcade.color.WHITE
+            arcade.draw_text(item,
+                             SCREEN_WIDTH // 2,
+                             SCREEN_HEIGHT * 0.5 - i * 60,
+                             color,
+                             30,
+                             anchor_x="center")
+
+    def draw_pause_screen(self):
+        """Отрисовка экрана паузы поверх игры"""
         self.camera_shake.update_camera()
         self.world_camera.use()
         with self.light_layer:
@@ -73,20 +127,69 @@ class GridGame(arcade.Window):
         self.camera_shake.readjust_camera()
         self.light_layer.draw(ambient_color=AMBIENT_COLOR)
 
+        arcade.draw_lbwh_rectangle_filled(self.player.center_x,
+                                          self.player.center_y,
+                                          200,
+                                          200,
+                                          (0, 0, 0, 180))
+
+        arcade.draw_text("ПАУЗА",
+                         self.player.center_x,
+                         self.player.center_y,
+                         arcade.color.WHITE,
+                         60,
+                         anchor_x="center",
+                         bold=True)
+
+        pause_items = ["Продолжить", "В главное меню"]
+
+        for i, item in enumerate(pause_items):
+            if i == self.selected_item:
+                color = arcade.color.YELLOW
+            else:
+                color = arcade.color.WHITE
+            arcade.draw_text(item,
+                             self.player.center_x,
+                             self.player.center_y - 50 - i * 100,
+                             color,
+                             30,
+                             anchor_x="center")
+
+    def on_draw(self):
+        self.clear()
+        if self.game_state == "PLAYING":
+            self.camera_shake.update_camera()
+            self.world_camera.use()
+            with self.light_layer:
+                self.wall_list.draw()
+                self.collision_list.draw()
+                self.generator_list.draw()
+                self.oil_list.draw()
+                self.player_list.draw()
+                self.monster_list.draw()
+            self.camera_shake.readjust_camera()
+            self.light_layer.draw(ambient_color=arcade.color.BLACK)
+
+        elif self.game_state == "MENU":
+            self.draw_menu()
+
+        elif self.game_state == "PAUSED":
+            self.draw_pause_screen()
+
     def on_update(self, dt: float):
+        if self.game_state != "PLAYING":
+            return
         self.physics_engine.update()
         self.camera_shake.update(dt)  # Обновляем тряску камеры
-
         position = (
             self.player.center_x,
             self.player.center_y
         )
-        if SCREEN_WIDTH <= position[0] <= (self.tile_map.width - 1) * self.tile_map.tile_width:
-            self.world_camera.position = arcade.math.lerp_2d(  # Изменяем позицию камеры
-                self.world_camera.position,
-                position,
-                CAMERA_LERP,  # Плавность следования камеры
-            )
+        self.world_camera.position = arcade.math.lerp_2d(  # Изменяем позицию камеры
+            self.world_camera.position,
+            position,
+            CAMERA_LERP,  # Плавность следования камеры
+        )
         # ускорение
         if arcade.key.LSHIFT in self.keys_pressed:
             PLAYER_SPEED = 200
@@ -101,20 +204,18 @@ class GridGame(arcade.Window):
         self.player_sprites_change_now = False
         if arcade.key.LEFT in self.keys_pressed:
             self.player.center_x -= PLAYER_SPEED * dt
-            move_was_x -= PLAYER_SPEED * dt
             self.player_sprites_change_now = True
         if arcade.key.RIGHT in self.keys_pressed:
             self.player.center_x += PLAYER_SPEED * dt
-            move_was_x += PLAYER_SPEED * dt
             self.player_sprites_change_now = True
         if arcade.key.UP in self.keys_pressed:
             self.player.center_y += PLAYER_SPEED * dt
             self.player_sprites_change_now = True
-            move_was_y += PLAYER_SPEED * dt
         if arcade.key.DOWN in self.keys_pressed:
             self.player.center_y -= PLAYER_SPEED * dt
-            move_was_y -= PLAYER_SPEED * dt
             self.player_sprites_change_now = True
+        if len(self.keys_pressed) != 0:
+            self.player.stop = False
         if self.player_sprites_change_now:
             self.player_sprites_change_timer += dt
             if self.player_sprites_change_timer >= MOVING_SPRITES_SPEED:
@@ -134,15 +235,62 @@ class GridGame(arcade.Window):
         self.player_light.position = self.player.position
 
     def on_key_press(self, key, modifiers):
-        if key == arcade.key.DOWN:
-            self.player.move_indexes.append(0)
-        if key == arcade.key.UP:
-            self.player.move_indexes.append(1)
-        if key == arcade.key.RIGHT:
-            self.player.move_indexes.append(2)
-        if key == arcade.key.LEFT:
-            self.player.move_indexes.append(3)
-        self.keys_pressed.add(key)
+        if self.game_state == "MENU":
+            if key == arcade.key.UP:
+                self.selected_item = (self.selected_item - 1) % 3
+            elif key == arcade.key.DOWN:
+                self.selected_item = (self.selected_item + 1) % 3
+            elif key == arcade.key.ENTER:
+                if self.selected_item == 0:
+                    self.setup()
+                    self.game_state = "PLAYING"
+                elif self.selected_item == 2:
+                    arcade.close_window()
+
+        elif self.game_state == "PLAYING":
+            if key == arcade.key.ESCAPE or key == arcade.key.P:
+                self.game_state = "PAUSED"
+                self.selected_item = 0
+                return
+
+            if key == arcade.key.DOWN:
+                self.player.move_indexes.append(0)
+            if key == arcade.key.UP:
+                self.player.move_indexes.append(1)
+            if key == arcade.key.RIGHT:
+                self.player.move_indexes.append(2)
+            if key == arcade.key.LEFT:
+                self.player.move_indexes.append(3)
+            if key == arcade.key.E:
+                volission_with_oil = arcade.check_for_collision_with_list(self.player, self.oil_list)
+                if len(volission_with_oil) > 0 and self.now_oil == 0:
+                    self.now_oil = 1
+                    volission_with_oil[0].remove_from_sprite_lists()
+                    arcade.play_sound(self.sound_inventory)
+            if self.now_oil == 1 and arcade.check_for_collision(self.player, self.generat) and key == arcade.key.E:
+                self.now_oil = 0
+                self.generat.now_oil += 1
+                arcade.play_sound(self.sound_oil_gen)
+
+            if key != arcade.key.E:
+                self.keys_pressed.add(key)
+        elif self.game_state == "PAUSED":
+            if key == arcade.key.ESCAPE or key == arcade.key.P:
+                self.game_state = "PLAYING"
+            elif key == arcade.key.UP:
+                self.selected_item = (self.selected_item - 1) % 2
+            elif key == arcade.key.DOWN:
+                self.selected_item = (self.selected_item + 1) % 2
+            elif key == arcade.key.ENTER:
+                if self.selected_item == 0:
+                    self.game_state = "PLAYING"
+                elif self.selected_item == 1:
+                    self.game_state = "MENU"
+                    self.selected_item = 0
+                    # Сброс движка
+                    self.player = None
+                    self.monster = None
+                    self.physics_engine = None
 
     def on_key_release(self, key, modifiers):
         if key in self.keys_pressed:
@@ -156,10 +304,9 @@ class GridGame(arcade.Window):
             self.keys_pressed.remove(key)
 
 
-
 def main():
     game = GridGame(SCREEN_WIDTH, SCREEN_HEIGHT)
-    game.setup()
+    game.game_state = "MENU"
     arcade.run()
 
 
