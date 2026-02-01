@@ -12,8 +12,8 @@ class Hero(arcade.Sprite):
             (arcade.load_texture("./sprites_all/left_first.png"), arcade.load_texture("./sprites_all/left_second.png"))
         ]
         self.texture = self.idle_texture
-        self.center_x = width / 2
-        self.center_y = height / 2
+        self.center_x = width
+        self.center_y = height
         self.now_sprite_num = 0
         self.now_direction_num = 0
         self.stop = True
