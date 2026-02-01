@@ -62,15 +62,11 @@ class GridGame(arcade.Window):
         # Камера для объектов интерфейса
         self.keys_pressed = set()
         self.selected_item = 0
-        self.game_state = "MENU"
+        self.selected_level = 0
+        self.game_state = "MENU"  # MENU, PLAYING, PAUSED, LEVEL_CHANGE
+        self.monster_speed = 130
 
-        # Причина тряски — специальный объект ScreenShake2
-
-    def setup(self):
-        map_name = "./floors/first_level.tmx"
-        self.tile_map = arcade.load_tilemap(map_name, scaling=2)
-        self.light_layer = LightLayer(SCREEN_WIDTH, SCREEN_HEIGHT)
-        self.light_layer.set_background_color(arcade.color.BLACK)
+        # Причина тряски — специальный объект ScreenShake2D
         self.camera_shake = arcade.camera.grips.ScreenShake2D(
             self.world_camera.view_data,  # Трястись будет только то, что попадает в объектив мировой камеры
             max_amplitude=15.0,  # Параметры, с которыми можно поиграть
@@ -78,10 +74,16 @@ class GridGame(arcade.Window):
             falloff_time=0.5,
             shake_frequency=10.0,
         )
+
+    def setup(self):
+        map_name = "./floors/first_level.tmx"
+        self.tile_map = arcade.load_tilemap(map_name, scaling=2)
+        self.light_layer = LightLayer(SCREEN_WIDTH, SCREEN_HEIGHT)
+        self.light_layer.set_background_color(arcade.color.BLACK)
         self.player_list = arcade.SpriteList()
         self.monster_list = arcade.SpriteList()
         self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 4)
-        self.monster = killer(SCREEN_WIDTH, SCREEN_HEIGHT, 5, SCREEN_WIDTH, SCREEN_HEIGHT)
+        self.monster = killer(random.randrange(100, SCREEN_WIDTH - 100), random.randrange(100, SCREEN_HEIGHT - 100), 5)
         self.monster_list.append(self.monster)
         self.player_list.append(self.player)
         self.generator_list = arcade.SpriteList()
@@ -117,17 +119,71 @@ class GridGame(arcade.Window):
         self.physics_engine = arcade.PhysicsEngineSimple(
             self.player, (self.collision_list, self.oil_list)
         )
+        if level == 1:
+            self.player_light = Light(
+                self.player.center_x,
+                self.player.center_y,
+                200,
+                (255, 240, 200), "soft"
+            )
+            self.monster_speed *= 1
+        elif level == 2:
+            self.monster_speed *= 1.5
+            self.player_light = Light(
+                self.player.center_x,
+                self.player.center_y,
+                100,
+                (255, 240, 200), "soft"
+            )
+        elif level == 3:
+            self.monster_speed *= 1.5
+            self.player_light = Light(
+                self.player.center_x,
+                self.player.center_y,
+                50,
+                (255, 240, 200), "soft"
+            )
+        self.light_layer.add(self.player_light)
+
+    def draw_level_change(self):
+        """отрисовка выбора уровней"""
+        arcade.set_background_color(arcade.color.BLACK)
+        self.gui_camera.use()
+        arcade.draw_text("Выбор уровня",
+                         SCREEN_WIDTH // 2,
+                         SCREEN_HEIGHT * 0.7,
+                         arcade.color.WHITE,
+                         60,
+                         anchor_x="center",
+                         anchor_y="center",
+                         bold=True
+                         )
+        menu_items = ["1 уровень", "2 уровень", "3 уровень", "Назад"]
+
+        for i, item in enumerate(menu_items):
+            color = arcade.color.YELLOW if i == self.selected_item else arcade.color.WHITE
+            arcade.draw_text(item,
+                             SCREEN_WIDTH // 2,
+                             SCREEN_HEIGHT * 0.5 - i * 60,
+                             color,
+                             30,
+                             anchor_x="center",
+                             anchor_y="center"
+                             )
 
     def draw_menu(self):
         """Отрисовка меню"""
         arcade.set_background_color(arcade.color.BLACK)
+        self.gui_camera.use()
         arcade.draw_text("AMNESIA-LIKE",
-                         self.world_camera.position.x,
-                         self.world_camera.position.y * 0.7,
+                         SCREEN_WIDTH // 2,
+                         SCREEN_HEIGHT * 0.7,
                          arcade.color.WHITE,
                          60,
                          anchor_x="center",
-                         bold=True)
+                         anchor_y="center",
+                         bold=True
+                         )
 
         menu_items = ["Начать игру", "Настройки", "Выход"]
         for i, item in enumerate(menu_items):
@@ -137,7 +193,9 @@ class GridGame(arcade.Window):
                              SCREEN_HEIGHT * 0.5 - i * 60,
                              color,
                              30,
-                             anchor_x="center")
+                             anchor_x="center",
+                             anchor_y="center"
+                             )
 
     def draw_pause_screen(self):
         """Отрисовка экрана паузы поверх игры"""
@@ -201,6 +259,9 @@ class GridGame(arcade.Window):
 
         elif self.game_state == "PAUSED":
             self.draw_pause_screen()
+
+        elif self.game_state == "LEVEL_CHANGE":
+            self.draw_level_change()
 
     def game_over_bad(self):
         self.light_layer = None
@@ -301,9 +362,32 @@ class GridGame(arcade.Window):
                 if self.selected_item == 0:
                     self.setup()
                     self.music_player = arcade.play_sound(self.sound_forest, volume=0.35, loop=True)
-                    self.game_state = "PLAYING"
-                elif self.selected_item == 2:
+                    self.game_state = "LEVEL_CHANGE"
+                    self.selected_item = 0
+                elif self.selected_item == 2:  # Выход
                     arcade.close_window()
+
+        elif self.game_state == "LEVEL_CHANGE":
+            if key == arcade.key.UP:
+                self.selected_item = (self.selected_item - 1) % 4
+            elif key == arcade.key.DOWN:
+                self.selected_item = (self.selected_item + 1) % 4
+            elif key == arcade.key.ENTER:
+                if self.selected_item == 0:  # 1 уровень
+                    self.setup(level=1)
+                    self.game_state = "PLAYING"
+                elif self.selected_item == 1:  # 2 уровень
+                    self.setup(level=2)
+                    self.game_state = "PLAYING"
+                elif self.selected_item == 2:  # 3 уровень
+                    self.setup(level=3)
+                    self.game_state = "PLAYING"
+                elif self.selected_item == 3:  # Назад
+                    self.game_state = "MENU"
+                    self.selected_item = 0
+            elif key == arcade.key.ESCAPE:  # ESC для возврата в меню
+                self.game_state = "MENU"
+                self.selected_item = 0
 
         elif self.game_state == "PLAYING":
             if key == arcade.key.ESCAPE or key == arcade.key.P:
