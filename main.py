@@ -9,6 +9,7 @@ from monster import killer
 from Items import Items
 from Generator import Generator
 from pyglet.graphics import Batch
+import sqlite3
 
 SCREEN_WIDTH, SCREEN_HEIGHT = arcade.window_commands.get_display_size()
 print(SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -59,14 +60,16 @@ class GridGame(arcade.Window):
         self.steps = arcade.load_sound("all_sounds/snown_steps.mp3")
         self.false_over_sound = arcade.load_sound("all_sounds/smert.mp3")
         self.true_over_sound = arcade.load_sound("all_sounds/win.mp3")
+        self.menu_buttons_sound = arcade.load_sound("all_sounds/menu_buttons.mp3")
         self.die_game_over = self.false_over_sound
+        self.gen_sound = None
         self.menu_music = arcade.play_sound(self.sound_menu, volume=0.5)
         self.player_light = None
         self.keys_all = [arcade.key.DOWN, arcade.key.UP, arcade.key.RIGHT, arcade.key.LEFT]
         self.player_sprites_change_now = False
         self.music_player = None
         self.player_sprites_change_timer = 0
-        # Камера для объектов интерфейса
+        self.con = sqlite3.connect("results.sqlite")
         self.keys_pressed = set()
         self.selected_item = 0
         self.selected_level = 0
@@ -84,6 +87,7 @@ class GridGame(arcade.Window):
 
     def setup(self, level=1):
         map_name = "./floors/first_level.tmx"
+        self.game_over_text = "Alles kaputt!"
         self.tile_map = arcade.load_tilemap(map_name, scaling=2)
         self.light_layer = LightLayer(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.light_layer.set_background_color(arcade.color.BLACK)
@@ -91,6 +95,7 @@ class GridGame(arcade.Window):
         self.monster_list = arcade.SpriteList()
         self.time_play = 0
         self.cloak = 0
+        self.multipliers = [1, 1.5, 2]
         self.player = Hero(SCREEN_WIDTH, SCREEN_HEIGHT, 4)
         self.monster = killer(SCREEN_WIDTH, SCREEN_HEIGHT, 5, random.randrange(100, SCREEN_WIDTH - 100), random.randrange(100, SCREEN_HEIGHT - 100))
         self.monster_list.append(self.monster)
@@ -121,6 +126,7 @@ class GridGame(arcade.Window):
         self.physics_engine = arcade.PhysicsEngineSimple(
             self.player, (self.collision_list, self.oil_list)
         )
+        self.level = level
         if level == 1:
             self.player_light = Light(
                 self.player.center_x,
@@ -205,7 +211,7 @@ class GridGame(arcade.Window):
         """Отрисовка меню"""
         arcade.set_background_color(arcade.color.BLACK)
         self.gui_camera.use()
-        arcade.draw_text("Игра окончена",
+        arcade.draw_text( self.game_over_text,
                          self.gui_camera.width // 2,
                          self.gui_camera.height * 0.7,
                          arcade.color.WHITE,
@@ -233,14 +239,14 @@ class GridGame(arcade.Window):
             self.collision_list.draw()
             self.player_list.draw()
             self.monster_list.draw()
+            arcade.draw_lbwh_rectangle_filled(self.world_camera.position.x - SCREEN_WIDTH // 2,
+                                              self.world_camera.position.y - SCREEN_HEIGHT // 2,
+                                              SCREEN_WIDTH,
+                                              SCREEN_HEIGHT,
+                                              (0, 0, 0, 240))
         self.camera_shake.readjust_camera()
         self.light_layer.draw(ambient_color=AMBIENT_COLOR)
 
-        arcade.draw_lbwh_rectangle_filled(self.world_camera.position.x - SCREEN_WIDTH // 2,
-                                          self.world_camera.position.y - SCREEN_HEIGHT // 2,
-                                          SCREEN_WIDTH,
-                                          SCREEN_HEIGHT,
-                                          (0, 0, 0, 180))
 
         arcade.draw_text("ПАУЗА",
                          self.player.center_x,
@@ -263,6 +269,33 @@ class GridGame(arcade.Window):
                              color,
                              30,
                              anchor_x="center")
+    def draw_leader_boards(self):
+        """отрисовка выбора уровней"""
+        arcade.set_background_color(arcade.color.BLACK)
+        self.gui_camera.use()
+        arcade.draw_text("Лучшие рекорды:",
+                         self.gui_camera.width // 2,
+                         self.gui_camera.height * 0.7,
+                         arcade.color.WHITE,
+                         60,
+                         anchor_x="center",
+                         anchor_y="center",
+                         bold=True
+                         )
+        cur = self.con.cursor()
+        result = sorted([res[0] for res in cur.execute("""SELECT record FROM Res""").fetchall()], key=lambda x: -x)
+        while len(result) < 3:
+            result.append(0)
+        for res in range(3):
+            arcade.draw_text(f"~|{result[res]}|~",
+                             self.gui_camera.width // 2,
+                             self.gui_camera.height * 0.5 - res * 60,
+                             arcade.color.WHITE,
+                             30,
+                             anchor_x="center",
+                             anchor_y="center",
+                             bold=True
+                             )
 
     def on_draw(self):
         self.clear()
@@ -312,9 +345,12 @@ class GridGame(arcade.Window):
             self.draw_level_change()
 
         elif self.game_state == "GAME_OVER":
-            self.draw_game_over(str(self.time_play).split(".")[0])
+            self.draw_game_over(self.time_play)
 
-    def game_over_bad(self):
+        elif self.game_state == "LEADER_BOARDS":
+            self.draw_leader_boards()
+
+    def game_over_bad(self, menu):
         self.light_layer = None
         self.count_oil = 10
         self.emitters = []
@@ -326,7 +362,10 @@ class GridGame(arcade.Window):
         self.selected_item = 0
         self.game_state = "GAME_OVER"
         arcade.stop_sound(self.music_player)
-        self.game_overed_music = arcade.play_sound(self.die_game_over, volume=0.5)
+        if self.gen_sound:
+            arcade.stop_sound(self.gen_sound)
+        if not menu:
+            self.game_overed_music = arcade.play_sound(self.die_game_over, volume=0.5)
 
 
     def on_update(self, dt: float):
@@ -336,25 +375,31 @@ class GridGame(arcade.Window):
             self.game_state = "GAME_OVER"
             self.die_game_over = self.false_over_sound
             self.time_play = "-"
-            self.game_over_bad()
+            self.game_over_bad(False)
             return
         if self.generat.now_oil == self.generat.max_oil:
             self.cloak += dt
             if self.cloak >= 10:
                 self.game_state = "GAME_OVER"
-                self.game_over_bad()
+                self.game_over_text = "Игра окончена"
+                self.time_play = int(self.count_oil * 10 * self.multipliers[self.level - 1] + (180 - self.time_play) * 5)
+                if self.time_play > 0:
+                    cur = self.con.cursor()
+                    cur.execute("INSERT INTO Res (record) VALUES (?)", (self.time_play,))
+                    self.con.commit()
+                self.game_over_bad(False)
                 return
         self.time_play += dt
         self.physics_engine.update()
         self.camera_shake.update(dt)  # Обновляем тряску камеры
         position = [0, 0]
-        timen_x = (self.tile_map.width * self.tile_map.tile_width * self.tile_map.scaling) // 5
-        timen_y = (self.tile_map.height * self.tile_map.tile_height * self.tile_map.scaling) // 6
-        if timen_x <= self.player.center_x <= timen_x * 4:
+        timen_x = (self.tile_map.width * self.tile_map.tile_width * self.tile_map.scaling) // 4
+        timen_y = (self.tile_map.height * self.tile_map.tile_height * self.tile_map.scaling) // 5
+        if timen_x <= self.player.center_x <= timen_x * 3:
             position[0] = self.player.center_x
         else:
             position[0] = self.world_camera.position.x
-        if timen_y <= self.player.center_y <= timen_y * 5:
+        if timen_y <= self.player.center_y <= timen_y * 4:
             position[1] = self.player.center_y
         else:
             position[1] = self.world_camera.position.y
@@ -421,21 +466,30 @@ class GridGame(arcade.Window):
         if self.game_state == "MENU":
             if key == arcade.key.UP:
                 self.selected_item = (self.selected_item - 1) % 3
+                arcade.play(self.menu_buttons_sound)
             elif key == arcade.key.DOWN:
                 self.selected_item = (self.selected_item + 1) % 3
+                arcade.play_sound(self.menu_buttons_sound)
             elif key == arcade.key.ENTER:
+                arcade.play_sound(self.menu_buttons_sound)
                 if self.selected_item == 0:
                     self.game_state = "LEVEL_CHANGE"
+                    self.selected_item = 0
+                elif self.selected_item == 1:
+                    self.game_state = "LEADER_BOARDS"
                     self.selected_item = 0
                 elif self.selected_item == 2:  # Выход
                     arcade.close_window()
 
         elif self.game_state == "LEVEL_CHANGE":
             if key == arcade.key.UP:
+                arcade.play_sound(self.menu_buttons_sound)
                 self.selected_item = (self.selected_item - 1) % 4
             elif key == arcade.key.DOWN:
+                arcade.play_sound(self.menu_buttons_sound)
                 self.selected_item = (self.selected_item + 1) % 4
             elif key == arcade.key.ENTER:
+                arcade.play_sound(self.menu_buttons_sound)
                 if self.selected_item == 0:
                     self.count_oil = 10
                     self.setup(level=1)
@@ -454,7 +508,10 @@ class GridGame(arcade.Window):
             elif key == arcade.key.ESCAPE:  # ESC для возврата в меню
                 self.game_state = "MENU"
                 self.selected_item = 0
-
+        elif self.game_state == "LEADER_BOARDS":
+            if key == arcade.key.ESCAPE:
+                self.game_state = "MENU"
+                self.selected_item = 0
         elif self.game_state == "PLAYING":
             if key == arcade.key.ESCAPE or key == arcade.key.P:
                 self.game_state = "PAUSED"
@@ -483,7 +540,7 @@ class GridGame(arcade.Window):
                                                   self.tile_map.tile_height * (
                                                               self.tile_map.height - 0.7) * self.tile_map.scaling)
                     self.emitters.append(self.fountain)
-                    self.generator_sound.play(0.1, loop=True)
+                    self.gen_sound = arcade.play_sound(self.generator_sound, 0.1, loop=True)
                     self.generat.now_oil += 1
                     self.die_game_over = self.true_over_sound
                 else:
@@ -505,9 +562,8 @@ class GridGame(arcade.Window):
                     self.game_state = "PLAYING"
                 elif self.selected_item == 1:
                     self.game_state = "MENU"
+                    arcade.play_sound(self.sound_menu)
                     self.selected_item = 0
-                    self.game_over_bad()
-                    self.game_state = "MENU"
         elif self.game_state == "GAME_OVER" and key == arcade.key.ENTER:
             self.game_state = "MENU"
             arcade.stop_sound(self.game_overed_music)
